@@ -50,5 +50,31 @@ expressions.filters.convertDateFR = function(input, s) {
     }
 }
 
+expressions.filters.cvssSeverityES = function(input) {
+    var pre = '<w:p><w:r><w:t>';
+    var post = '</w:t></w:r></w:p>';
+    var result = "Informativa"
+    if (input === "Low") result = "Baja"
+    else if (input === "Medium") result = "Media"
+    else if (input === "High") result = "Alta"
+    else if (input === "Critical") result = "Crítica"
+    // return pre + result + post;
+    return result;
+}
+
+expressions.filters.cvssSeverityEN = function(input) {
+    var pre = '<w:p><w:r><w:t>';
+    var post = '</w:t></w:r></w:p>';
+    var result = "Informative"
+    if (input === "Low") result = "Low"
+    else if (input === "Medium") result = "Medium"
+    else if (input === "High") result = "High"
+    else if (input === "Critical") result = "Critical"
+    // return pre + result + post;
+    return result;
+}
+
+
+
 exports.expressions = expressions
 
