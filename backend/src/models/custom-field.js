@@ -11,6 +11,7 @@ var CustomFieldSchema = new Schema({
     offset:             {type: Number, enum: [0,1,2,3,4,5,6,7,8,9,10,11,12], default: 0},
     required:           {type: Boolean, default: false},
     description:        {type: String, default: ''},
+    inline:             {type: Boolean, default: false},
     text:               [{_id: false, locale: String, value: Schema.Types.Mixed}],
     options:            [{_id: false, locale: String, value: String}]
 }, {timestamps: true})
@@ -29,7 +30,7 @@ CustomFieldSchema.index({"label": 1, "display": 1, "displaySub": 1}, {
 CustomFieldSchema.statics.getAll = () => {
     return new Promise((resolve, reject) => {
         var query = CustomField.find().sort('position')
-        query.select('fieldType label display displaySub size offset required description text options')
+        query.select('fieldType label display displaySub size offset required description inline text options')
         query.exec()
         .then((rows) => {
             resolve(rows);
@@ -104,6 +105,131 @@ CustomFieldSchema.statics.delete = (fieldId) => {
             console.log(err)
             reject(err);
         })
+    })
+}
+
+CustomFieldSchema.statics.backup = (path) => {
+    return new Promise(async (resolve, reject) => {
+        const fs = require('fs')
+
+        function exportCustomFieldsPromise() {
+            return new Promise((resolve, reject) => {
+                const writeStream = fs.createWriteStream(`${path}/customFields.json`)
+                writeStream.write('[')
+
+                let customFields = CustomField.find().cursor()
+                let isFirst = true
+
+                customFields.eachAsync(async (document) => {
+                    if (!isFirst) {
+                        writeStream.write(',')
+                    } else {
+                        isFirst = false
+                    }
+                    writeStream.write(JSON.stringify(document, null, 2))
+                    return Promise.resolve()
+                })
+                .then(() => {
+                    writeStream.write(']');
+                    writeStream.end();
+                })
+                .catch((error) => {
+                    reject(error);
+                });
+
+                writeStream.on('finish', () => {
+                    resolve('ok');
+                });
+            
+                writeStream.on('error', (error) => {
+                    reject(error);
+                });
+            })
+        }
+
+        try {
+            await exportCustomFieldsPromise()
+            resolve()
+        }
+        catch (error) {
+            reject({error: error, model: 'CustomField'})
+        }
+            
+    })
+}
+
+CustomFieldSchema.statics.restore = (path, mode = "upsert") => {
+    return new Promise(async (resolve, reject) => {
+        const fs = require('fs')
+
+        function importCustomFieldsPromise () {
+            let documents = []
+
+            return new Promise((resolve, reject) => {
+                const readStream = fs.createReadStream(`${path}/customFields.json`)
+                const JSONStream = require('JSONStream')
+
+                let jsonStream = JSONStream.parse('*')
+                readStream.pipe(jsonStream)
+
+                readStream.on('error', (error) => {
+                    reject(error)
+                })
+
+                jsonStream.on('data', async (document) => {
+                    documents.push(document)
+                    if (documents.length === 100) {
+                        CustomField.bulkWrite(documents.map(document => {
+                            return {
+                                replaceOne: {
+                                    filter: {label: document.label, display: document.display, displaySub: document.displaySub},
+                                    replacement: document,
+                                    upsert: true
+                                }
+                            }
+                        }))
+                        .catch(err => {
+                            reject(err)
+                        })
+                        documents = []
+                    }
+                })
+                jsonStream.on('end', () => {
+                    if (documents.length > 0) {
+                        CustomField.bulkWrite(documents.map(document => {
+                            return {
+                                replaceOne: {
+                                    filter: {label: document.label, display: document.display, displaySub: document.displaySub},
+                                    replacement: document,
+                                    upsert: true
+                                }
+                            }
+                        }))
+                        .then(() => {
+                            resolve()
+                        })
+                        .catch(err => {
+                            reject(err)
+                        })
+                    }
+                    else
+                        resolve()
+                })
+                jsonStream.on('error', (error) => {
+                    reject(error)
+                })
+            })
+        }
+
+        try {
+            if (mode === "revert") 
+                await CustomField.deleteMany()
+            await importCustomFieldsPromise()
+            resolve()
+        }
+        catch (error) {
+            reject({error: error, model: 'CustomField'})
+        }
     })
 }
 
